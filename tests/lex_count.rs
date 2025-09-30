@@ -1,7 +1,5 @@
 use assert_cmd::Command;
-use predicates::prelude::*;
 use std::fs;
-use std::path::Path;
 
 #[test]
 fn lex_count_all_samples() {
@@ -12,12 +10,23 @@ fn lex_count_all_samples() {
         if let Some(ext) = path.extension() {
             if ext == "cpp" {
                 let p = path.to_string_lossy().into_owned();
+                // run binary to get the count
                 let mut cmd = Command::cargo_bin("ruscom").expect("binary not built");
-                cmd.arg("lex").arg("--count").arg(&p);
-                cmd.assert()
-                    .success()
-                    .stdout(predicate::str::is_match("^\\d+\\n$").unwrap())
-                    .stderr(predicate::str::is_empty());
+                let assert = cmd.arg("lex").arg("--count").arg(&p).assert().success();
+                let out = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
+                let bin_count: usize = out.trim().parse().expect("binary did not print a number");
+
+                // run library lexer to collect tokens and log them
+                let src = fs::read_to_string(&p).expect("read sample");
+                let mut lex = ruscom::lexer::Lexer::new(&src);
+                let mut tokens = Vec::new();
+                while let Some(r) = lex.next() {
+                    let t = r.expect("lex error");
+                    if t == ruscom::lexer::token::Token::Eof { break; }
+                    tokens.push(t);
+                }
+                eprintln!("{} tokens ({}): {:?}", &p, tokens.len(), tokens);
+                assert_eq!(tokens.len(), bin_count, "count mismatch for {}", &p);
             }
         }
     }
