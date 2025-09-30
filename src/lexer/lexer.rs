@@ -52,7 +52,7 @@ impl<'a> Lexer<'a> {
                 let next = clone.next();
                 if next == Some('/') {
                     // consume '//'
-                    self.bump(); self.bump(); progressed = true;
+                    self.bump(); self.bump();
                     while let Some(c) = self.peek() {
                         self.bump();
                         if c == '\n' { break; }
@@ -60,7 +60,7 @@ impl<'a> Lexer<'a> {
                     continue;
                 } else if next == Some('*') {
                     // consume '/*'
-                    self.bump(); self.bump(); progressed = true;
+                    self.bump(); self.bump();
                     loop {
                         match self.bump() {
                             Some('*') => {
