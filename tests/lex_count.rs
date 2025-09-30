@@ -1,16 +1,24 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::fs;
+use std::path::Path;
 
-// integration test: run `ruscom lex --count tests/data/sample1.cpp` and assert output is the expected token count
 #[test]
-fn lex_count_sample1() {
-    // read sample just to confirm it's present
-    let _ = fs::read_to_string("tests/data/sample1.cpp").expect("sample1.cpp missing");
-
-    let mut cmd = Command::cargo_bin("ruscom").expect("binary not built");
-    cmd.arg("lex").arg("--count").arg("tests/data/sample1.cpp");
-    cmd.assert()
-        .success()
-        .stdout(predicate::str::is_match("^\\d+\\n$").unwrap());
+fn lex_count_all_samples() {
+    let entries = fs::read_dir("tests/data").expect("tests/data directory missing");
+    for entry in entries {
+        let entry = entry.expect("read_dir entry");
+        let path = entry.path();
+        if let Some(ext) = path.extension() {
+            if ext == "cpp" {
+                let p = path.to_string_lossy().into_owned();
+                let mut cmd = Command::cargo_bin("ruscom").expect("binary not built");
+                cmd.arg("lex").arg("--count").arg(&p);
+                cmd.assert()
+                    .success()
+                    .stdout(predicate::str::is_match("^\\d+\\n$").unwrap())
+                    .stderr(predicate::str::is_empty());
+            }
+        }
+    }
 }
