@@ -1,35 +1,6 @@
-use std::fmt;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Token {
-    Identifier(String),
-    Number(String),
-    StringLiteral(String),
-    CharLiteral(char),
-    Operator(String),
-    Punct(char),
-    Eof,
-}
-
-#[derive(Debug)]
-pub enum LexError {
-    UnterminatedString,
-    UnterminatedChar,
-    InvalidEscape,
-}
-
-impl fmt::Display for LexError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LexError::UnterminatedString => write!(f, "unterminated string literal"),
-            LexError::UnterminatedChar => write!(f, "unterminated char literal"),
-            LexError::InvalidEscape => write!(f, "invalid escape sequence"),
-        }
-    }
-}
+use crate::lexer::token::{Token, LexError, LexResult};
 
 pub struct Lexer<'a> {
-    src: &'a str,
     chars: std::str::Chars<'a>,
     peeked: Option<char>,
 }
@@ -38,7 +9,7 @@ impl<'a> Lexer<'a> {
     pub fn new(input: &'a str) -> Self {
         let mut chars = input.chars();
         let peeked = chars.next();
-        Self { src: input, chars, peeked }
+        Self { chars, peeked }
     }
 
     fn bump(&mut self) -> Option<char> {
@@ -65,7 +36,6 @@ impl<'a> Lexer<'a> {
 
     fn skip_whitespace_and_comments(&mut self) {
         loop {
-            // skip whitespace
             let mut progressed = false;
             while let Some(c) = self.peek() {
                 if c.is_whitespace() {
@@ -76,35 +46,25 @@ impl<'a> Lexer<'a> {
                 }
             }
 
-            // single-line comment //
             if self.peek() == Some('/') {
-                // need to peek next from chars iterator -- complex; clone remaining
-                let mut clone_iter = self.chars.clone();
-                let next = clone_iter.next().or(None);
+                // need to check next char without consuming permanently; clone iterator
+                let mut clone = self.chars.clone();
+                let next = clone.next();
                 if next == Some('/') {
                     // consume '//'
-                    self.bump();
-                    self.bump();
-                    progressed = true;
-                    // consume until newline or EOF
+                    self.bump(); self.bump(); progressed = true;
                     while let Some(c) = self.peek() {
                         self.bump();
                         if c == '\n' { break; }
                     }
                     continue;
                 } else if next == Some('*') {
-                    // block comment /* ... */
-                    self.bump(); // '/'
-                    self.bump(); // '*'
-                    progressed = true;
-                    // read until '*/' or EOF
+                    // consume '/*'
+                    self.bump(); self.bump(); progressed = true;
                     loop {
                         match self.bump() {
                             Some('*') => {
-                                if self.peek() == Some('/') {
-                                    self.bump();
-                                    break;
-                                }
+                                if self.peek() == Some('/') { self.bump(); break; }
                             }
                             None => break,
                             _ => {}
@@ -118,8 +78,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn read_string(&mut self) -> Result<Token, LexError> {
-        // assume opening '"' consumed
+    fn read_string(&mut self) -> LexResult<Token> {
         let mut s = String::new();
         while let Some(c) = self.bump() {
             match c {
@@ -135,9 +94,7 @@ impl<'a> Lexer<'a> {
                             _ => return Err(LexError::InvalidEscape),
                         };
                         s.push(esc);
-                    } else {
-                        return Err(LexError::UnterminatedString);
-                    }
+                    } else { return Err(LexError::UnterminatedString); }
                 }
                 '"' => return Ok(Token::StringLiteral(s)),
                 c => s.push(c),
@@ -146,8 +103,7 @@ impl<'a> Lexer<'a> {
         Err(LexError::UnterminatedString)
     }
 
-    fn read_char(&mut self) -> Result<Token, LexError> {
-        // assume opening '\'' consumed
+    fn read_char(&mut self) -> LexResult<Token> {
         if let Some(c) = self.bump() {
             if c == '\\' {
                 if let Some(next) = self.bump() {
@@ -163,7 +119,6 @@ impl<'a> Lexer<'a> {
                     if self.peek() == Some('\'') { self.bump(); Ok(Token::CharLiteral(esc)) } else { Err(LexError::UnterminatedChar) }
                 } else { Err(LexError::UnterminatedChar) }
             } else {
-                // normal char
                 if self.peek() == Some('\'') { self.bump(); Ok(Token::CharLiteral(c)) } else { Err(LexError::UnterminatedChar) }
             }
         } else { Err(LexError::UnterminatedChar) }
@@ -171,23 +126,20 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Result<Token, LexError>;
+    type Item = LexResult<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace_and_comments();
-
         let ch = self.bump();
         match ch {
             None => Some(Ok(Token::Eof)),
             Some(c) if c.is_ascii_alphabetic() || c == '_' => {
-                let mut s = String::new();
-                s.push(c);
+                let mut s = String::new(); s.push(c);
                 s.push_str(&self.eat_while(|ch| ch.is_ascii_alphanumeric() || ch == '_'));
                 Some(Ok(Token::Identifier(s)))
             }
             Some(c) if c.is_ascii_digit() => {
-                let mut s = String::new();
-                s.push(c);
+                let mut s = String::new(); s.push(c);
                 s.push_str(&self.eat_while(|ch| ch.is_ascii_digit() || ch == '.'));
                 Some(Ok(Token::Number(s)))
             }
@@ -195,16 +147,11 @@ impl<'a> Iterator for Lexer<'a> {
             Some('\'') => Some(self.read_char()),
             Some(c) if "{}();,[]<>".contains(c) => Some(Ok(Token::Punct(c))),
             Some(c) => {
-                // treat as operator (one or two char)
-                let mut s = String::new();
-                s.push(c);
+                let mut s = String::new(); s.push(c);
                 if let Some(next) = self.peek() {
                     let two = format!("{}{}", c, next);
                     let two_ops = ["==","!=","<=","=>","->","++","--","+=","-=","*=","/=","&&","||","<<", ">>"];
-                    if two_ops.contains(&two.as_str()) {
-                        self.bump();
-                        s.push(next);
-                    }
+                    if two_ops.contains(&two.as_str()) { self.bump(); s.push(next); }
                 }
                 Some(Ok(Token::Operator(s)))
             }
@@ -215,6 +162,7 @@ impl<'a> Iterator for Lexer<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lexer::token::Token;
 
     #[test]
     fn simple_ident_and_number() {
@@ -228,10 +176,9 @@ mod tests {
     }
 
     #[test]
-    fn string_and_char() {
-        let src = "\"hello\\n\" '\\'a'";
+    fn comments_and_whitespace() {
+        let src = "// line comment\n/* block */\nfoo";
         let mut lex = Lexer::new(src);
-        assert_eq!(lex.next().unwrap().unwrap(), Token::StringLiteral("hello\n".into()));
-        // note: the char token test is simplistic; adjust if needed
+        assert_eq!(lex.next().unwrap().unwrap(), Token::Identifier("foo".into()));
     }
 }

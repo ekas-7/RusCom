@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use anyhow::Result;
+mod lexer;
 
 /// RusCom — C++ compiler prototype in Rust (scaffold)
 #[derive(Parser)]
@@ -38,7 +39,7 @@ fn main() -> Result<()> {
         }
         Commands::Lex { input } => {
             let src = std::fs::read_to_string(&input)?;
-            let mut lexer = ruscom::lexer::Lexer::new(&src);
+            let mut lexer = lexer::Lexer::new(&src);
             while let Some(tok) = lexer.next() {
                 match tok {
                     Ok(t) => println!("{:?}", t),
