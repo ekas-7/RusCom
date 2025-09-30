@@ -23,7 +23,12 @@ enum Commands {
     /// Dump AST (placeholder)
     AstDump { input: String },
     /// Dump lexical tokens from input
-    Lex { input: String },
+    Lex {
+        input: String,
+        /// Print only the number of tokens instead of dumping them
+        #[arg(long = "count")]
+        count: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -37,13 +42,27 @@ fn main() -> Result<()> {
         Commands::AstDump { input } => {
             println!("AST dump: input={}", input);
         }
-        Commands::Lex { input } => {
+        Commands::Lex { input, count } => {
             let src = std::fs::read_to_string(&input)?;
             let mut lexer = lexer::Lexer::new(&src);
-            while let Some(tok) = lexer.next() {
-                match tok {
-                    Ok(t) => println!("{:?}", t),
-                    Err(e) => { eprintln!("Lex error: {}", e); break; }
+            if count {
+                let mut n = 0usize;
+                while let Some(tok) = lexer.next() {
+                    match tok {
+                        Ok(t) => {
+                            if t == lexer::token::Token::Eof { break; }
+                            n += 1;
+                        }
+                        Err(e) => { eprintln!("Lex error: {}", e); break; }
+                    }
+                }
+                println!("{}", n);
+            } else {
+                while let Some(tok) = lexer.next() {
+                    match tok {
+                        Ok(t) => println!("{:?}", t),
+                        Err(e) => { eprintln!("Lex error: {}", e); break; }
+                    }
                 }
             }
         }
