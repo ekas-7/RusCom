@@ -21,6 +21,8 @@ enum Commands {
     },
     /// Dump AST (placeholder)
     AstDump { input: String },
+    /// Dump lexical tokens from input
+    Lex { input: String },
 }
 
 fn main() -> Result<()> {
@@ -33,6 +35,16 @@ fn main() -> Result<()> {
         }
         Commands::AstDump { input } => {
             println!("AST dump: input={}", input);
+        }
+        Commands::Lex { input } => {
+            let src = std::fs::read_to_string(&input)?;
+            let mut lexer = ruscom::lexer::Lexer::new(&src);
+            while let Some(tok) = lexer.next() {
+                match tok {
+                    Ok(t) => println!("{:?}", t),
+                    Err(e) => { eprintln!("Lex error: {}", e); break; }
+                }
+            }
         }
     }
 
